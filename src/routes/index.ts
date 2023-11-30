@@ -78,6 +78,10 @@ const routes = async (app: FastifyInstance, opts: FastifyServerOptions) => {
 		handler: async (req, res) => {
 			const imageKey = (req.params as any)["*"];
 
+			if (!imageKey) {
+				throw new Error("Missing image key");
+			}
+
 			const { f, q, bw, w, blur, h, s, r, c } = req.query;
 
 			const imageCacheKey = hashObject({
@@ -93,10 +97,10 @@ const routes = async (app: FastifyInstance, opts: FastifyServerOptions) => {
 				if (isGzip(cachedTransformedImage)) {
 					const decompressedCachedFile = gunzipSync(cachedTransformedImage);
 
-					return res.type(`image/${f}`).compress(decompressedCachedFile);
+					return res.header("Cache-Control", "private, max-age=120").type(`image/${f}`).compress(decompressedCachedFile);
 				}
 
-				return res.type(`image/${f}`).compress(cachedTransformedImage);
+				return res.header("Cache-Control", "private, max-age=120").type(`image/${f}`).compress(cachedTransformedImage);
 			}
 
 			const fetchedImageBuffer = await global.storageAdapter.getByKey(imageKey);
@@ -104,7 +108,15 @@ const routes = async (app: FastifyInstance, opts: FastifyServerOptions) => {
 			const imagePipeline = sharp(fetchedImageBuffer);
 
 			if (w || h) {
-				imagePipeline.resize({ width: w, height: h, withoutEnlargement: true, fit: c });
+				imagePipeline.resize({
+					width: w,
+					height: h,
+					withoutEnlargement: false,
+					withoutReduction: false,
+					fastShrinkOnLoad: true,
+					kernel: "lanczos3",
+					fit: c
+				});
 			}
 
 			if (s) {
@@ -131,7 +143,7 @@ const routes = async (app: FastifyInstance, opts: FastifyServerOptions) => {
 
 			await redisClient.set(imageCacheKey, compressedBuffer);
 
-			res.type(`image/${f}`).compress(transformedBuffer);
+			res.header("Cache-Control", "private, max-age=120").type(`image/${f}`).compress(transformedBuffer);
 		}
 	});
 };

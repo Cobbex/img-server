@@ -32,15 +32,25 @@ class Server {
 		try {
 			const StorageAdapter = await LoadStorageModule(getEnv("STORAGE_ADAPTER"));
 
+			this.app.log.info(`Storage module loaded: "${getEnv("STORAGE_ADAPTER")}"`);
+
 			global.storageAdapter = new StorageAdapter();
 
-			redisClient.on("connection", (err) => {
-				this.app.log.info("Redis connected!");
+			this.app.log.info("Redis: connecting...");
+
+			redisClient.on("connect", (err) => {
+				this.app.log.info("Redis: connected!");
+			});
+
+			redisClient.on("ready", (err) => {
+				this.app.log.info("Redis: ready!");
 			});
 
 			redisClient.on("error", (err) => {
 				throw new Error(err);
 			});
+
+			await redisClient.connect();
 
 			await this.app.register(fastifyCompress, {
 				global: true
