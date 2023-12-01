@@ -1,9 +1,9 @@
 import { FastifyInstance, FastifySchema, FastifyServerOptions } from "fastify";
 import sharp from "sharp";
-import redisClient from "../lib/redis";
 import { hashObject } from "../lib/crypto";
 import { gunzipSync, gzipSync } from "zlib";
 import isGzip from "is-gzip";
+import webhookRoutes from "./webhook";
 
 const validationSchema: FastifySchema = {
 	params: {
@@ -71,6 +71,8 @@ const validationSchema: FastifySchema = {
 };
 
 const routes = async (app: FastifyInstance, opts: FastifyServerOptions) => {
+	await app.register(webhookRoutes, { prefix: "webhook" });
+
 	app.route({
 		method: "GET",
 		url: "/*",
@@ -89,7 +91,7 @@ const routes = async (app: FastifyInstance, opts: FastifyServerOptions) => {
 				settings: req.query
 			});
 
-			const cachedTransformedImage = await redisClient.getBuffer(imageCacheKey);
+			const cachedTransformedImage = await global.appCache.getBuffer(imageCacheKey);
 
 			if (cachedTransformedImage && Buffer.isBuffer(cachedTransformedImage)) {
 				app.log.info("Serving cached data!");
@@ -141,7 +143,7 @@ const routes = async (app: FastifyInstance, opts: FastifyServerOptions) => {
 
 			const compressedBuffer = gzipSync(transformedBuffer);
 
-			await redisClient.set(imageCacheKey, compressedBuffer);
+			await global.appCache.set(imageCacheKey, compressedBuffer);
 
 			res.header("Cache-Control", "private, max-age=120").type(`image/${f}`).compress(transformedBuffer);
 		}

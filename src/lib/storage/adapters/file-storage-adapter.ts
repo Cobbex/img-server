@@ -1,7 +1,7 @@
 import { BaseStorageAdapter } from "../base-storage-adapter";
 import { Readable } from "stream";
 import { createReadStream } from "fs";
-import { readFile } from "fs/promises";
+import { readFile, readdir, writeFile } from "fs/promises";
 import path, { resolve } from "path";
 import getEnv from "../../env";
 
@@ -33,7 +33,14 @@ class FileStorageAdapter implements BaseStorageAdapter {
 	}
 
 	async store(key: string, data: Buffer): Promise<void> {
-		throw new Error("Not implemented");
+		return writeFile(this.resolvePath(key), data);
+	}
+
+	async getAll() {
+		return readdir(this.resolvePath("/"), {
+			encoding: "utf-8",
+			withFileTypes: false
+		});
 	}
 }
 

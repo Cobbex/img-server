@@ -1,9 +1,8 @@
 import { BaseStorageAdapter } from "../base-storage-adapter";
 import { Readable } from "stream";
 import axios from "axios";
-import redisClient from "../../redis";
 import { gunzipSync, gzipSync } from "zlib";
-import { hashObject, simpleHash } from "../../crypto";
+import { simpleHash } from "../../crypto";
 
 class URLStorageAdapter implements BaseStorageAdapter {
 	constructor() {}
@@ -14,7 +13,7 @@ class URLStorageAdapter implements BaseStorageAdapter {
 
 	async getByKey(url: string): Promise<Buffer | undefined> {
 		const cacheKey = this.getCacheKey(simpleHash(url));
-		const possibleCachedImage = await redisClient.getBuffer(cacheKey);
+		const possibleCachedImage = await global.appCache.getBuffer(cacheKey);
 
 		if (possibleCachedImage) {
 			return gunzipSync(possibleCachedImage);
@@ -31,7 +30,7 @@ class URLStorageAdapter implements BaseStorageAdapter {
 
 		const compressedBuffer = gzipSync(fetchedImageBuffer);
 
-		await redisClient.set(cacheKey, compressedBuffer);
+		await global.appCache.set(cacheKey, compressedBuffer);
 
 		return fetchedImageBuffer;
 	}

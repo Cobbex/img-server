@@ -4,6 +4,7 @@ export interface BaseStorageAdapter {
 	getByKey: (key: string) => Promise<Buffer | undefined>;
 	getByKeyAsStream: (key: string) => Promise<Readable | undefined>;
 	store: (key: string, data: Buffer) => Promise<void>;
+	getAll?: () => Promise<string[]>;
 }
 
 export default BaseStorageAdapter;

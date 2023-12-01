@@ -2,8 +2,10 @@ import Fastify, { FastifyInstance } from "fastify";
 import routes from "./routes";
 import getEnv from "./lib/env";
 import fastifyCompress from "@fastify/compress";
-import redisClient from "./lib/redis";
 import LoadStorageModule from "./lib/storage/storage-loader";
+import AppCache from "./lib/cache";
+import MemoryAppCacheProvider from "./lib/cache/providers/memory";
+import FileAppCacheProvider from "./lib/cache/providers/file";
 
 class Server {
 	app: FastifyInstance;
@@ -36,21 +38,12 @@ class Server {
 
 			global.storageAdapter = new StorageAdapter();
 
-			this.app.log.info("Redis: connecting...");
-
-			redisClient.on("connect", (err) => {
-				this.app.log.info("Redis: connected!");
+			global.appCache = new AppCache({
+				// provider: new FileAppCacheProvider("cache")
+				provider: new MemoryAppCacheProvider()
 			});
 
-			redisClient.on("ready", (err) => {
-				this.app.log.info("Redis: ready!");
-			});
-
-			redisClient.on("error", (err) => {
-				throw new Error(err);
-			});
-
-			await redisClient.connect();
+			await global.appCache.init();
 
 			await this.app.register(fastifyCompress, {
 				global: true
