@@ -1,4 +1,4 @@
-const LoadStorageModule = async (storageLoaderName?: string) => {
+const loadStorageModule = async (storageLoaderName?: string) => {
 	if (!storageLoaderName) {
 		throw new Error("No storage loader name passed!");
 	}
@@ -8,4 +8,4 @@ const LoadStorageModule = async (storageLoaderName?: string) => {
 	return storageLoader.default;
 };
 
-export default LoadStorageModule;
+export default loadStorageModule;

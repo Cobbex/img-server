@@ -1,9 +1,9 @@
 import { FastifyInstance, FastifySchema, FastifyServerOptions } from "fastify";
 import sharp from "sharp";
-import redisClient from "../lib/redis";
 import { hashObject } from "../lib/crypto";
-import { gunzipSync, gzipSync } from "zlib";
-import isGzip from "is-gzip";
+import zlib from "zlib";
+import envars from "../lib/env";
+import extractOptimalImageFormat from "../lib/extractOptimalImageFormat";
 
 const validationSchema: FastifySchema = {
 	params: {
@@ -31,8 +31,8 @@ const validationSchema: FastifySchema = {
 			blur: {
 				type: "number",
 				default: undefined,
-				minimum: 0.3,
-				maximum: 128
+				minimum: 0,
+				maximum: 64
 			},
 			s: {
 				type: "number",
@@ -48,8 +48,7 @@ const validationSchema: FastifySchema = {
 			},
 			f: {
 				type: "string",
-				enum: ["png", "webp", "jpeg", "jpg", "heif", "avif"],
-				default: "webp"
+				enum: ["png", "webp", "jpeg", "jpg", "avif", "jxl"]
 			},
 			c: {
 				type: "string",
@@ -82,30 +81,32 @@ const routes = async (app: FastifyInstance, opts: FastifyServerOptions) => {
 				throw new Error("Missing image key");
 			}
 
-			const { f, q, bw, w, blur, h, s, r, c } = req.query;
+			const { f, q, bw, w, blur, h, s, r, c } = req.query as any;
 
-			const imageCacheKey = hashObject({
-				key: imageKey,
-				settings: req.query
-			});
+			const imageFormat = f ? f : extractOptimalImageFormat(req.headers.accept);
 
-			const cachedTransformedImage = await redisClient.getBuffer(imageCacheKey);
+			// Get image stream
+			const imageStream = await global.storageAdapter.getItem(imageKey);
 
-			if (cachedTransformedImage && Buffer.isBuffer(cachedTransformedImage)) {
-				app.log.info("Serving cached data!");
-
-				if (isGzip(cachedTransformedImage)) {
-					const decompressedCachedFile = gunzipSync(cachedTransformedImage);
-
-					return res.header("Cache-Control", "private, max-age=120").type(`image/${f}`).compress(decompressedCachedFile);
-				}
-
-				return res.header("Cache-Control", "private, max-age=120").type(`image/${f}`).compress(cachedTransformedImage);
+			if (!imageStream) {
+				return res.status(404).send();
 			}
 
-			const fetchedImageBuffer = await global.storageAdapter.getByKey(imageKey);
+			// Handle error
+			imageStream.on("error", (err: StreamError) => {
+				imageStream?.destroy(err);
 
-			const imagePipeline = sharp(fetchedImageBuffer);
+				if (err.hasOwnProperty("code")) {
+					if (err.code === "ENOENT") {
+						return res.status(404).send();
+					}
+				}
+
+				return res.status(500).send();
+			});
+
+			// Start image pipeline
+			const imagePipeline = sharp();
 
 			if (w || h) {
 				imagePipeline.resize({
@@ -135,15 +136,21 @@ const routes = async (app: FastifyInstance, opts: FastifyServerOptions) => {
 				imagePipeline.grayscale(bw);
 			}
 
-			imagePipeline.toFormat(f || "webp", { quality: q, optimiseCoding: true, progressive: true });
+			imagePipeline.toFormat(imageFormat, { quality: q, optimiseCoding: true, progressive: true });
 
-			const transformedBuffer = await imagePipeline.toBuffer();
+			// Pipe image stream to pipeline
+			imageStream.pipe(imagePipeline);
 
-			const compressedBuffer = gzipSync(transformedBuffer);
+			// Set vary header
+			res.header("Vary", "accept");
 
-			await redisClient.set(imageCacheKey, compressedBuffer);
+			if (envars.isDev) {
+				res.header("Cache-Control", `private, max-age=30`);
+			} else {
+				res.header("Cache-Control", `private, max-age=${envars.CACHE_MAXAGE}`);
+			}
 
-			res.header("Cache-Control", "private, max-age=120").type(`image/${f}`).compress(transformedBuffer);
+			return res.send(imagePipeline);
 		}
 	});
 };
